@@ -1,6 +1,8 @@
-"""Runs the upstream Python k-Shape (TheDatumOrg/kshape-python) on a dataset with fixed initial labels.
+"""Runs the Python k-Shape (TheDatumOrg/kshape-python) on a dataset with fixed initial labels.
 
-  python run_reference.py --kshape-src PATH --backend cpu|gpu --data X.bin --init X.init --k 3 [--repeat 5] [--out prefix]
+--kshape-src is a checkout of kshape-python: cpu runs its NumPy version, gpu its PyTorch version.
+
+  python run_reference.py --kshape-src PATH --backend cpu|gpu --data X.bin --init X.init --k 3 [--repeat 5] [--out prefix] [--tag name]
 """
 import argparse
 import sys
@@ -42,13 +44,14 @@ def main():
     ap.add_argument("--repeat", type=int, default=5)
     ap.add_argument("--n-jobs", type=int, default=-1)
     ap.add_argument("--out")
+    ap.add_argument("--tag", help="name printed in the output lines (default: the backend)")
     a = ap.parse_args()
     sys.path.insert(0, a.kshape_src)
     stub_sklearn()
     x = load(a.data)
     init = np.fromfile(a.init, dtype="<i4")
     m, L, D = x.shape
-    iters = [0]
+    iters = [None]
 
     if a.backend == "cpu":
         import multiprocessing
@@ -73,6 +76,7 @@ def main():
             ks = core.KShapeClusteringGPU(n_clusters=a.k, max_iter=a.max_iter)
             ks.fit(x)
             torch.cuda.synchronize()
+            iters[0] = getattr(ks, "n_iter_", None)  # set by the batched version
             return ks.labels_.astype(np.int32), ks.centroids_.cpu().numpy()
 
     # empty clusters: reseed from the same fixed sequence as the Java version (EmptyPick)
@@ -98,6 +102,7 @@ def main():
         return orig_extract(*args, **kw)
     core._extract_shape = counting
 
+    tag = a.tag or a.backend
     times = []
     for r in range(a.repeat):
         calls[0] = 0
@@ -105,10 +110,10 @@ def main():
         t0 = time.time()
         labels, cents = fit()
         times.append(time.time() - t0)
-        it = calls[0] // (a.k * D)
-        print(f"[ref-{a.backend}] run {r}: {times[-1]:.4f}s iters={it}", flush=True)
+        it = iters[0] if iters[0] is not None else calls[0] // (a.k * D)
+        print(f"[ref-{tag}] run {r}: {times[-1]:.4f}s iters={it}", flush=True)
     warm = float(np.mean(times[1:])) if len(times) > 1 else times[0]
-    print(f"[ref-{a.backend}] first={times[0]:.4f}s warm_mean={warm:.4f}s iters={it} per_iter={warm / max(1, it):.5f}s")
+    print(f"[ref-{tag}] first={times[0]:.4f}s warm_mean={warm:.4f}s iters={it} per_iter={warm / max(1, it):.5f}s")
     if a.out:
         labels.astype("<i4").tofile(a.out + ".labels")
         np.asarray(cents, dtype="<f4").tofile(a.out + ".centroids")
