@@ -6,7 +6,7 @@
 #
 #   scripts/bench.sh OUTDIR [config ...]
 #
-# A config is name:kind:m:L:D:k:max_iter:repeat. Without configs, the default set below runs.
+# A config is name:kind:m:L:D:k:max_iter:repeat (repeat applies to the TornadoVM runs). Without configs, the default set below runs.
 set -u
 HERE=$(cd "$(dirname "$0")/.." && pwd)
 OUT=${1:?usage: bench.sh OUTDIR [config ...]}; shift
@@ -14,6 +14,8 @@ mkdir -p "$OUT"
 PY=${PY:-python3}
 SKIP_CPU=${SKIP_CPU:-}
 SKIP_GPU=${SKIP_GPU:-}
+# the Python references are slow: first run plus one warm run by default
+REF_REPEAT=${REF_REPEAT:-2}
 CONFIGS=("$@")
 if [ ${#CONFIGS[@]} -eq 0 ]; then
   CONFIGS=(
@@ -35,12 +37,12 @@ for cfg in "${CONFIGS[@]}"; do
     --data "$d.bin" --init "$d.init" --k "$k" --max-iter "$iters" --repeat "$rep" --out "$d.tvm" 2>&1 | tee "$d.tvm.log" | grep '\[kshape\]'
   if [ -z "$SKIP_GPU" ]; then
     $PY "$HERE/python/run_reference.py" --kshape-src "$KSHAPE_SRC" --backend gpu --data "$d.bin" --init "$d.init" --k "$k" \
-      --max-iter "$iters" --repeat "$rep" --out "$d.gpu" 2>&1 | tee "$d.gpu.log" | grep '\[ref'
+      --max-iter "$iters" --repeat "$REF_REPEAT" --out "$d.gpu" 2>&1 | tee "$d.gpu.log" | grep '\[ref'
     $PY "$HERE/python/compare.py" --a "$d.gpu" --b "$d.tvm" --k "$k" --L "$L" --D "$D" --truth "$d.truth" | tee "$d.cmp-gpu.txt"
   fi
   if [ -z "$SKIP_CPU" ]; then
     $PY "$HERE/python/run_reference.py" --kshape-src "$KSHAPE_SRC" --backend cpu --data "$d.bin" --init "$d.init" --k "$k" \
-      --max-iter "$iters" --repeat "${CPU_REPEAT:-2}" --out "$d.cpu" 2>&1 | tee "$d.cpu.log" | grep '\[ref'
+      --max-iter "$iters" --repeat "$REF_REPEAT" --out "$d.cpu" 2>&1 | tee "$d.cpu.log" | grep '\[ref'
     $PY "$HERE/python/compare.py" --a "$d.cpu" --b "$d.tvm" --k "$k" --L "$L" --D "$D" --truth "$d.truth" | tee "$d.cmp-cpu.txt"
   fi
 done
