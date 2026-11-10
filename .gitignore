@@ -1,0 +1,7 @@
+target/
+*.bin
+*.init
+*.truth
+*.labels
+*.centroids
+__pycache__/
