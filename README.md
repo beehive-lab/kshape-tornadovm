@@ -103,6 +103,51 @@ The script generates each dataset, runs every version from the same initial labe
 
 `python/run_reference.py` runs the Python versions with the given initial labels and the same empty-cluster re-seeding as the Java version; `python/compare.py` compares two runs.
 
+## Apache IoTDB UDF
+
+[Apache IoTDB](https://iotdb.apache.org) (2.0.10 and later) has a `cluster` UDF in its UDF library that splits a series into non-overlapping windows and clusters them, with `method=kshape` among others. `org.beehive.kshape.iotdb.UDTFClusterGPU` is a GPU version of that UDF: it takes the same parameters (`l`, `k`, `norm`, `maxiter`, `output`) and gives the same output, and runs k-Shape on a TornadoVM device.
+
+IoTDB's k-Shape is a variant of the one above: no alignment step, the first `k` windows as initial centroids, centroids from the first right singular vector of the member windows, z-normalisation with the population standard deviation, and an empty cluster takes the previous centroid of the largest cluster. `WindowKShapeTornado` implements that variant with the kernels of this project. It computes in float32 on the device, while IoTDB computes in float64.
+
+Setup (IoTDB 2.0.11, TornadoVM 8.1.0, JDK 25):
+
+```bash
+./mvnw -q package
+cp target/kshape-tornadovm-0.1.0-SNAPSHOT.jar $IOTDB_HOME/ext/udf/
+$IOTDB_HOME/sbin/start-confignode.sh
+IOTDB_JVM_OPTS="@$TORNADOVM_HOME/tornado-argfile" $IOTDB_HOME/sbin/start-datanode.sh
+```
+
+```sql
+CREATE FUNCTION cluster_gpu AS 'org.beehive.kshape.iotdb.UDTFClusterGPU'
+SELECT cluster_gpu(s, 'l'='256', 'k'='8') FROM root.demo.d1
+SELECT cluster_gpu(s, 'l'='256', 'k'='8', 'output'='centroid') FROM root.demo.d1
+```
+
+The first query compiles the kernels. The compiled kernels are kept for later queries with the same number of windows, window length and `k`.
+
+`ClusterBench` compares `WindowKShapeTornado` with IoTDB's k-Shape (`library-udf.jar` from the IoTDB `library-udf` release on the class path) on synthetic sensor windows:
+
+```bash
+java @$TORNADOVM_HOME/tornado-argfile -cp target/classes:library-udf.jar org.beehive.kshape.iotdb.ClusterBench --windows 5000 --l 256 --k 8
+```
+
+Results on the machine above, IoTDB 2.0.11 (`library-udf` release), synthetic windows of `k` random smooth shapes, each shifted, scaled, offset and noised, `norm=true`, `maxiter=200`. IoTDB's k-Shape runs on one CPU core. TornadoVM: mean of the runs after the first.
+
+| Windows x l, k | Iterations | IoTDB k-Shape | TornadoVM | Speedup | Same labels as IoTDB |
+|---|---:|---:|---:|---:|---:|
+| 1000 x 128, 4 | 3 | 1.69 s | 0.036 s | 47x | 100% |
+| 5000 x 256, 8 | 200 (max) | 1449 s | 1.11 s | 1300x | 100% |
+| 2000 x 1024, 6 | 4 | 102.6 s | 0.174 s | 590x | 100% |
+| 10000 x 512, 8 | 8 | 674.3 s | 0.405 s | 1660x | 100% |
+| 20000 x 256, 10 | 9 | 409.8 s | 0.407 s | 1000x | 100% |
+
+The centroids differ from IoTDB's by at most 1.8e-6. The first fit in a process also compiles the kernels (1.7 to 3.7 s).
+
+Through SQL, on a 5.12 million point series, `cluster_gpu` takes 1.35 s (10000 windows of 512) and 1.6 to 1.8 s (20000 windows of 256) after the first query, including reading the series. `cluster` with `method=kshape` stops at IoTDB's default query timeout of 60 s on both. On a 400 x 64 series, both UDFs return the same labels through SQL (0.07 s and 0.88 s).
+
+Labels can differ from IoTDB when two centroids have exactly the same shape, for example two constant windows of the same sign among the first `k` windows. Every window is then equally close to both, and either choice is correct.
+
 ## References
 
 * J. Paparrizos and L. Gravano. k-Shape: Efficient and Accurate Clustering of Time Series. SIGMOD 2015.

@@ -11,7 +11,7 @@ package org.beehive.kshape;
  * inverse iteration on the tridiagonal matrix for the top eigenvector. Larger matrices first try Lanczos,
  * which needs only matrix-vector products, and keep its answer only when its residual is at rounding level.
  */
-final class SymmetricEigen {
+public final class SymmetricEigen {
 
     private SymmetricEigen() {
     }
@@ -20,7 +20,7 @@ final class SymmetricEigen {
      * @param a row-major n x n symmetric matrix (only read)
      * @return unit eigenvector of the largest eigenvalue (the last one in ascending order)
      */
-    static double[] topEigenvector(float[] a, int off, int n) {
+    public static double[] topEigenvector(float[] a, int off, int n) {
         if (n > LANCZOS_MIN) {
             double[] x = lanczosTop(a, off, n);
             if (x != null) {
