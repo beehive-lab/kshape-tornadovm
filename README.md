@@ -32,7 +32,7 @@ Centroids start at zero, as in the Python version. An empty cluster takes a seri
 ## Requirements
 
 * JDK 22 or newer (tested with JDK 25)
-* TornadoVM 8.1.0, with `TORNADOVM_HOME` set (tested with the PTX (CUDA) and Metal backends)
+* TornadoVM 8.1.0, with `TORNADOVM_HOME` set (tested with the CUDA and Metal backends)
 * For the benchmarks: Python 3 with NumPy (and PyTorch with CUDA for the PyTorch baselines), and a checkout of [kshape-python](https://github.com/TheDatumOrg/kshape-python)
 
 ## Build and run
