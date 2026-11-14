@@ -68,85 +68,39 @@ Wall time of a full clustering run from the same initial labels:
 
 * **NumPy**: `KShapeClusteringCPU` with `n_jobs=-1`.
 * **PyTorch**: `KShapeClusteringGPU` from kshape-python.
-* **Batched PyTorch**: `KShapeClusteringGPU` rewritten to process all series and clusters at once ([TheDatumOrg/kshape-python#21](https://github.com/TheDatumOrg/kshape-python/pull/21)), with the same smaller eigenproblem.
 * **TornadoVM**: this project.
 
-TornadoVM and batched PyTorch: mean of the runs after the first. NumPy and PyTorch: mean of the runs after the first, or a single run for the 4096-length datasets.
+TornadoVM: mean of the runs after the first. NumPy and PyTorch: mean of the runs after the first, or a single run for the 4096-length datasets.
 
-| Dataset | m x L x D, k | Iterations | NumPy | PyTorch | Batched PyTorch | TornadoVM | Same labels as NumPy |
-|---|---|---:|---:|---:|---:|---:|---:|
-| ucr-small (shapes) | 1000 x 256 x 1, 8 | 13 | 9.45 s | 61.35 s | 0.090 s | **0.071 s** | 100% |
-| ucr-large (shapes) | 5000 x 512 x 1, 10 | 47 | 355.5 s | 1476.7 s | 1.376 s | **0.709 s** | 99.72% |
-| multi (shapes) | 2000 x 1000 x 3, 5 | 8 | 36.84 s | 80.76 s | 0.313 s | **0.192 s** | 100% |
-| notebook (uniform) | 500 x 5000 x 6, 3 | 5 (max) | 192.5 s | 31.47 s | 0.117 s | 0.173 s | 100% |
-| readme-n512 (uniform) | 512 x 4096 x 1, 3 | 100 (max) | 489.5 s | 139.8 s | **0.871 s** | 0.991 s | 100% |
-| readme-n4096 (uniform) | 4096 x 4096 x 1, 3 | 100 (max) | 1301.0 s | 986.3 s | **14.01 s** | 50.98 s | 100% |
+| Dataset | m x L x D, k | Iterations | NumPy | PyTorch | TornadoVM | Same labels as NumPy |
+|---|---|---:|---:|---:|---:|---:|
+| ucr-small (shapes) | 1000 x 256 x 1, 8 | 13 | 9.45 s | 61.35 s | **0.071 s** | 100% |
+| ucr-large (shapes) | 5000 x 512 x 1, 10 | 47 | 355.5 s | 1476.7 s | **0.709 s** | 99.72% |
+| multi (shapes) | 2000 x 1000 x 3, 5 | 8 | 36.84 s | 80.76 s | **0.192 s** | 100% |
+| notebook (uniform) | 500 x 5000 x 6, 3 | 5 (max) | 192.5 s | 31.47 s | **0.173 s** | 100% |
+| readme-n512 (uniform) | 512 x 4096 x 1, 3 | 100 (max) | 489.5 s | 139.8 s | **0.991 s** | 100% |
+| readme-n4096 (uniform) | 4096 x 4096 x 1, 3 | 100 (max) | 1301.0 s | 986.3 s | **50.98 s** | 100% |
 
 "shapes" datasets have `k` random smooth prototypes, each series shifted, scaled, offset and noised. "uniform" is `np.random.rand` data with the sizes of the kshape-python benchmark notebook and of two points of its README benchmark chart.
 
 The last column compares TornadoVM's labels with the NumPy version (float64). On ucr-large the float32 runs take a different number of iterations (NumPy 55, TornadoVM 47), because near-ties move a few series in late iterations. The ARI between the two labelings there is 0.996.
 
-The first run in a process is slower: for TornadoVM it includes the JIT compilation of the kernels (ucr-small: 1.30 s instead of 0.071 s), and for batched PyTorch the CUDA initialisation (about 0.5 s).
+The first run in a process is slower: for TornadoVM it includes the JIT compilation of the kernels (ucr-small: 1.30 s instead of 0.071 s).
 
 Notes:
 
-* The PyTorch version in kshape-python processes one series or one (series, centroid) pair at a time and synchronises with the host for each, so it is slower than NumPy for series shorter than a few thousand points. Most of the gap between it and TornadoVM comes from that; batched PyTorch closes most of it.
-* Batched PyTorch is faster on the three uniform datasets. TornadoVM computes the eigenvectors on the host, while batched PyTorch runs `eigh` on the GPU. On `readme-n4096` each cluster has about 1365 members, and the host eigenvector step takes 41 of the 51 s.
+* The PyTorch version in kshape-python processes one series or one (series, centroid) pair at a time and synchronises with the host for each, so it is slower than NumPy for series shorter than a few thousand points.
+* TornadoVM computes the eigenvectors on the host. On `readme-n4096` each cluster has about 1365 members, and the host eigenvector step takes 41 of the 51 s.
 
 ## Reproducing the benchmarks
 
 ```bash
-PY=python3 KSHAPE_SRC=/path/to/kshape-python BATCHED_SRC=/path/to/kshape-python-batched scripts/bench.sh results
+PY=python3 KSHAPE_SRC=/path/to/kshape-python scripts/bench.sh results
 ```
 
-The script generates each dataset, runs every version from the same initial labels, and compares the labels of each with TornadoVM's. `BATCHED_SRC` is optional and points at a checkout of the batched PyTorch branch. `SKIP_CPU=1` and `SKIP_GPU=1` skip the NumPy and PyTorch runs. `REF_REPEAT` (default 2) sets how many times they run. A configuration can also be given on the command line as `name:kind:m:L:D:k:max_iter:repeat`.
+The script generates each dataset, runs every version from the same initial labels, and compares the labels of each with TornadoVM's. `SKIP_CPU=1` and `SKIP_GPU=1` skip the NumPy and PyTorch runs. `REF_REPEAT` (default 2) sets how many times they run. A configuration can also be given on the command line as `name:kind:m:L:D:k:max_iter:repeat`.
 
 `python/run_reference.py` runs the Python versions with the given initial labels and the same empty-cluster re-seeding as the Java version; `python/compare.py` compares two runs.
-
-## Apache IoTDB UDF
-
-[Apache IoTDB](https://iotdb.apache.org) (2.0.10 and later) has a `cluster` UDF in its UDF library that splits a series into non-overlapping windows and clusters them, with `method=kshape` among others. `org.beehive.kshape.iotdb.UDTFClusterGPU` is a GPU version of that UDF: it takes the same parameters (`l`, `k`, `norm`, `maxiter`, `output`) and gives the same output, and runs k-Shape on a TornadoVM device.
-
-IoTDB's k-Shape is a variant of the one above: no alignment step, the first `k` windows as initial centroids, centroids from the first right singular vector of the member windows, z-normalisation with the population standard deviation, and an empty cluster takes the previous centroid of the largest cluster. `WindowKShapeTornado` implements that variant with the kernels of this project. It computes in float32 on the device, while IoTDB computes in float64.
-
-Setup (IoTDB 2.0.11, TornadoVM 8.1.0, JDK 25):
-
-```bash
-./mvnw -q package
-cp target/kshape-tornadovm-0.1.0-SNAPSHOT.jar $IOTDB_HOME/ext/udf/
-$IOTDB_HOME/sbin/start-confignode.sh
-IOTDB_JVM_OPTS="@$TORNADOVM_HOME/tornado-argfile" $IOTDB_HOME/sbin/start-datanode.sh
-```
-
-```sql
-CREATE FUNCTION cluster_gpu AS 'org.beehive.kshape.iotdb.UDTFClusterGPU'
-SELECT cluster_gpu(s, 'l'='256', 'k'='8') FROM root.demo.d1
-SELECT cluster_gpu(s, 'l'='256', 'k'='8', 'output'='centroid') FROM root.demo.d1
-```
-
-The first query compiles the kernels. The compiled kernels are kept for later queries with the same number of windows, window length and `k`.
-
-`ClusterBench` compares `WindowKShapeTornado` with IoTDB's k-Shape (`library-udf.jar` from the IoTDB `library-udf` release on the class path) on synthetic sensor windows:
-
-```bash
-java @$TORNADOVM_HOME/tornado-argfile -cp target/classes:library-udf.jar org.beehive.kshape.iotdb.ClusterBench --windows 5000 --l 256 --k 8
-```
-
-Results on the machine above, IoTDB 2.0.11 (`library-udf` release), synthetic windows of `k` random smooth shapes, each shifted, scaled, offset and noised, `norm=true`, `maxiter=200`. IoTDB's k-Shape runs on one CPU core. TornadoVM: mean of the runs after the first.
-
-| Windows x l, k | Iterations | IoTDB k-Shape | TornadoVM | Speedup | Same labels as IoTDB |
-|---|---:|---:|---:|---:|---:|
-| 1000 x 128, 4 | 3 | 1.69 s | 0.036 s | 47x | 100% |
-| 5000 x 256, 8 | 200 (max) | 1449 s | 1.11 s | 1300x | 100% |
-| 2000 x 1024, 6 | 4 | 102.6 s | 0.174 s | 590x | 100% |
-| 10000 x 512, 8 | 8 | 674.3 s | 0.405 s | 1660x | 100% |
-| 20000 x 256, 10 | 9 | 409.8 s | 0.407 s | 1000x | 100% |
-
-The centroids differ from IoTDB's by at most 1.8e-6. The first fit in a process also compiles the kernels (1.7 to 3.7 s).
-
-Through SQL, on a 5.12 million point series, `cluster_gpu` takes 1.35 s (10000 windows of 512) and 1.6 to 1.8 s (20000 windows of 256) after the first query, including reading the series. `cluster` with `method=kshape` stops at IoTDB's default query timeout of 60 s on both. On a 400 x 64 series, both UDFs return the same labels through SQL (0.07 s and 0.88 s).
-
-Labels can differ from IoTDB when two centroids have exactly the same shape, for example two constant windows of the same sign among the first `k` windows. Every window is then equally close to both, and either choice is correct.
 
 ## References
 

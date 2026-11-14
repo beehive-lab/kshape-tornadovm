@@ -3,8 +3,7 @@
 # https://github.com/TheDatumOrg/kshape-python.
 #
 # Needs: TORNADOVM_HOME and JAVA_HOME set, PY pointing at a Python with numpy (and torch with CUDA for the GPU
-# baselines), KSHAPE_SRC pointing at a checkout of kshape-python. If BATCHED_SRC points at a checkout of the
-# batched PyTorch version (https://github.com/TheDatumOrg/kshape-python/pull/21), it is benchmarked too.
+# baselines), KSHAPE_SRC pointing at a checkout of kshape-python.
 #
 #   scripts/bench.sh OUTDIR [config ...]
 #
@@ -16,7 +15,6 @@ mkdir -p "$OUT"
 PY=${PY:-python3}
 SKIP_CPU=${SKIP_CPU:-}
 SKIP_GPU=${SKIP_GPU:-}
-BATCHED_SRC=${BATCHED_SRC:-}
 # the Python references are slow: first run plus one warm run by default
 REF_REPEAT=${REF_REPEAT:-2}
 CONFIGS=("$@")
@@ -40,11 +38,6 @@ for cfg in "${CONFIGS[@]}"; do
   [ -f "$d.bin" ] || $PY "$HERE/python/gen_data.py" --kind "$kind" --m "$m" --L "$L" --D "$D" --k "$k" --out "$d"
   java @"$TORNADOVM_HOME/tornado-argfile" -Dtornado.device.memory=40GB -cp "$HERE/target/classes" org.beehive.kshape.KShapeBench \
     --data "$d.bin" --init "$d.init" --k "$k" --max-iter "$iters" --repeat "$rep" --out "$d.tvm" 2>&1 | tee "$d.tvm.log" | grep '\[kshape\]'
-  if [ -n "$BATCHED_SRC" ]; then
-    $PY "$HERE/python/run_reference.py" --kshape-src "$BATCHED_SRC" --backend gpu --tag batched --data "$d.bin" --init "$d.init" \
-      --k "$k" --max-iter "$iters" --repeat "$rep" --out "$d.batched" 2>&1 | tee "$d.batched.log" | grep '\[ref'
-    $PY "$HERE/python/compare.py" --a "$d.batched" --b "$d.tvm" --k "$k" --L "$L" --D "$D" --truth "$d.truth" | tee "$d.cmp-batched.txt"
-  fi
   if [ -z "$SKIP_GPU" ]; then
     $PY "$HERE/python/run_reference.py" --kshape-src "$KSHAPE_SRC" --backend gpu --data "$d.bin" --init "$d.init" --k "$k" \
       --max-iter "$iters" --repeat "$REF_REPEAT" --out "$d.gpu" 2>&1 | tee "$d.gpu.log" | grep '\[ref'

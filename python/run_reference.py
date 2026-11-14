@@ -76,7 +76,7 @@ def main():
             ks = core.KShapeClusteringGPU(n_clusters=a.k, max_iter=a.max_iter)
             ks.fit(x)
             torch.cuda.synchronize()
-            iters[0] = getattr(ks, "n_iter_", None)  # set by the batched version
+            iters[0] = getattr(ks, "n_iter_", None)  # if the version reports it
             return ks.labels_.astype(np.int32), ks.centroids_.cpu().numpy()
 
     # empty clusters: reseed from the same fixed sequence as the Java version (EmptyPick)
