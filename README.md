@@ -31,14 +31,20 @@ Centroids start at zero, as in the Python version. An empty cluster takes a seri
 
 ## Requirements
 
-* JDK 21 or newer
-* TornadoVM 8.1.0, with `TORNADOVM_HOME` set (tested with the CUDA and Metal backends)
+* JDK 22 or newer (tested with JDK 25)
+* TornadoVM 8.1.0, with `TORNADOVM_HOME` set (tested with the PTX (CUDA) and Metal backends)
 * For the benchmarks: Python 3 with NumPy (and PyTorch with CUDA for the PyTorch baselines), and a checkout of [kshape-python](https://github.com/TheDatumOrg/kshape-python)
 
 ## Build and run
 
 ```bash
 ./mvnw -q compile
+```
+
+To use it as a library from another Maven project, install it into the local Maven repository as `io.github.beehive-lab:kshape-tornadovm:0.1.0-SNAPSHOT`:
+
+```bash
+./mvnw -q install -DskipTests
 ```
 
 ```bash
